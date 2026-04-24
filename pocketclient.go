@@ -44,9 +44,9 @@ type Response[T any] struct {
 	Items      []T `json:"items"`
 }
 
-type AuthResponse[T any] struct {
-	Token  string `json:"token"`
-	Record T      `json:"record"`
+type authResponse struct {
+	Token  string          `json:"token"`
+	Record json.RawMessage `json:"record"`
 }
 
 type Error struct {
@@ -83,30 +83,30 @@ func (c *Client) DisableAutoReauth() *Client {
 	return c
 }
 
-func AuthWithPassword[T any](c *Client, collection, identity, password string) (*AuthResponse[T], error) {
-	var out AuthResponse[T]
+func (c *Client) AuthPassword(collection, identity, password string, out any) error {
+	var auth authResponse
 
 	err := c.POST(
 		"/api/collections/"+collection+"/auth-with-password",
 		authRequest{Identity: identity, Password: password},
-		&out,
+		&auth,
 	)
 
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	c.setToken(out.Token)
+	c.setToken(auth.Token)
 
 	c.authCollection = collection
 	c.authIdentity = identity
 	c.authPassword = password
 
-	return &out, nil
-}
+	if out != nil && len(auth.Record) > 0 {
+		return json.Unmarshal(auth.Record, out)
+	}
 
-func AuthSuperuser[T any](c *Client, identity, password string) (*AuthResponse[T], error) {
-	return AuthWithPassword[T](c, "_superusers", identity, password)
+	return nil
 }
 
 func (c *Client) Create(collection string, body any, out any, q ...Query) error {
@@ -227,7 +227,7 @@ func (c *Client) reauth(ctx context.Context) error {
 		return fmt.Errorf("cannot reauth: no stored auth credentials")
 	}
 
-	var auth AuthResponse[map[string]any]
+	var auth authResponse
 
 	err := c.do(
 		ctx,
