@@ -1,6 +1,6 @@
-# pocketclient
+![pocketclient](pocketclient.png)
 
-A minimal, idiomatic Go client for [PocketBase](https://pocketbase.io).
+A minimal, typed Go SDK for [PocketBase](https://pocketbase.io).
 
 ## Install
 
