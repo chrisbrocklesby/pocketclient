@@ -1,5 +1,5 @@
 ![pocketclient](pocketclient.png)
-
+# PocketClient (Go SDK)
 A minimal, typed Go SDK for [PocketBase](https://pocketbase.io).
 
 ## Install
