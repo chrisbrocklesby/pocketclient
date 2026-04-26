@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -60,6 +61,22 @@ func (e Error) Error() string {
 	return fmt.Sprintf("%s %s failed: %d %s", e.Method, e.Path, e.Status, e.Body)
 }
 
+func IsError(err error, status ...int) (Error, bool) {
+	var e Error
+	if !errors.As(err, &e) {
+		return e, false
+	}
+	if len(status) == 0 {
+		return e, true
+	}
+	for _, s := range status {
+		if e.Status == s {
+			return e, true
+		}
+	}
+	return e, false
+}
+
 type authRequest struct {
 	Identity string `json:"identity"`
 	Password string `json:"password"`
@@ -83,7 +100,7 @@ func (c *Client) DisableAutoReauth() *Client {
 	return c
 }
 
-func (c *Client) AuthPassword(collection, identity, password string, out any) error {
+func (c *Client) AuthPassword(collection, identity, password string, output any) error {
 	var auth authResponse
 
 	err := c.POST(
@@ -102,62 +119,62 @@ func (c *Client) AuthPassword(collection, identity, password string, out any) er
 	c.authIdentity = identity
 	c.authPassword = password
 
-	if out != nil && len(auth.Record) > 0 {
-		return json.Unmarshal(auth.Record, out)
+	if output != nil && len(auth.Record) > 0 {
+		return json.Unmarshal(auth.Record, output)
 	}
 
 	return nil
 }
 
-func (c *Client) Create(collection string, body any, out any, q ...Query) error {
-	return c.POST("/api/collections/"+collection+"/records", body, out, q...)
+func (c *Client) Create(collection string, body any, output any, query ...Query) error {
+	return c.POST("/api/collections/"+collection+"/records", body, output, query...)
 }
 
-func (c *Client) View(collection, id string, out any, q ...Query) error {
-	return c.GET("/api/collections/"+collection+"/records/"+id, out, q...)
+func (c *Client) View(collection, id string, output any, query ...Query) error {
+	return c.GET("/api/collections/"+collection+"/records/"+id, output, query...)
 }
 
-func (c *Client) Update(collection, id string, body any, out any, q ...Query) error {
-	return c.PATCH("/api/collections/"+collection+"/records/"+id, body, out, q...)
+func (c *Client) Update(collection, id string, body any, output any, query ...Query) error {
+	return c.PATCH("/api/collections/"+collection+"/records/"+id, body, output, query...)
 }
 
-func (c *Client) List(collection string, out any, q ...Query) error {
-	return c.GET("/api/collections/"+collection+"/records", out, q...)
+func (c *Client) List(collection string, output any, query ...Query) error {
+	return c.GET("/api/collections/"+collection+"/records", output, query...)
 }
 
-func (c *Client) Delete(collection, id string, out any, q ...Query) error {
-	return c.DELETE("/api/collections/"+collection+"/records/"+id, out, q...)
+func (c *Client) Delete(collection, id string, output any, query ...Query) error {
+	return c.DELETE("/api/collections/"+collection+"/records/"+id, output, query...)
 }
 
-func (c *Client) Raw(method, path string, body any, out any, q ...Query) error {
-	return c.do(context.Background(), method, path, body, out, nil, firstQuery(q), true)
+func (c *Client) Raw(method, path string, body any, output any, query ...Query) error {
+	return c.do(context.Background(), method, path, body, output, nil, firstQuery(query), true)
 }
 
-func (c *Client) RawCtx(ctx context.Context, method, path string, body any, out any, q ...Query) error {
-	return c.do(ctx, method, path, body, out, nil, firstQuery(q), true)
+func (c *Client) RawCtx(ctx context.Context, method, path string, body any, output any, query ...Query) error {
+	return c.do(ctx, method, path, body, output, nil, firstQuery(query), true)
 }
 
-func (c *Client) RawWithHeaders(ctx context.Context, method, path string, body any, out any, headers Headers, q ...Query) error {
-	return c.do(ctx, method, path, body, out, headers, firstQuery(q), true)
+func (c *Client) RawWithHeaders(ctx context.Context, method, path string, body any, output any, headers Headers, query ...Query) error {
+	return c.do(ctx, method, path, body, output, headers, firstQuery(query), true)
 }
 
-func (c *Client) GET(path string, out any, q ...Query) error {
-	return c.do(context.Background(), http.MethodGet, path, nil, out, nil, firstQuery(q), true)
+func (c *Client) GET(path string, output any, query ...Query) error {
+	return c.do(context.Background(), http.MethodGet, path, nil, output, nil, firstQuery(query), true)
 }
 
-func (c *Client) POST(path string, body any, out any, q ...Query) error {
-	return c.do(context.Background(), http.MethodPost, path, body, out, nil, firstQuery(q), true)
+func (c *Client) POST(path string, body any, output any, query ...Query) error {
+	return c.do(context.Background(), http.MethodPost, path, body, output, nil, firstQuery(query), true)
 }
 
-func (c *Client) PATCH(path string, body any, out any, q ...Query) error {
-	return c.do(context.Background(), http.MethodPatch, path, body, out, nil, firstQuery(q), true)
+func (c *Client) PATCH(path string, body any, output any, query ...Query) error {
+	return c.do(context.Background(), http.MethodPatch, path, body, output, nil, firstQuery(query), true)
 }
 
-func (c *Client) DELETE(path string, out any, q ...Query) error {
-	return c.do(context.Background(), http.MethodDelete, path, nil, out, nil, firstQuery(q), true)
+func (c *Client) DELETE(path string, output any, query ...Query) error {
+	return c.do(context.Background(), http.MethodDelete, path, nil, output, nil, firstQuery(query), true)
 }
 
-func (c *Client) do(ctx context.Context, method, path string, body any, out any, headers Headers, q Query, retry bool) error {
+func (c *Client) do(ctx context.Context, method, path string, body any, output any, headers Headers, query Query, retry bool) error {
 	reader, contentType, err := buildBody(body)
 	if err != nil {
 		return err
@@ -166,7 +183,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any,
 	path = normalizePath(path)
 	fullURL := c.BaseURL + path
 
-	if qs := encodeQuery(q); qs != "" {
+	if qs := encodeQuery(query); qs != "" {
 		fullURL += "?" + qs
 	}
 
@@ -203,7 +220,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any,
 			return err
 		}
 
-		return c.do(ctx, method, path, body, out, headers, q, false)
+		return c.do(ctx, method, path, body, output, headers, query, false)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -215,8 +232,8 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any,
 		}
 	}
 
-	if out != nil && len(data) > 0 {
-		return json.Unmarshal(data, out)
+	if output != nil && len(data) > 0 {
+		return json.Unmarshal(data, output)
 	}
 
 	return nil
@@ -424,14 +441,14 @@ func isFileValue(v reflect.Value) bool {
 	return v.Type() == reflect.TypeOf(File{}) || v.Type() == reflect.TypeOf([]File{})
 }
 
-func encodeQuery(q Query) string {
-	if len(q) == 0 {
+func encodeQuery(query Query) string {
+	if len(query) == 0 {
 		return ""
 	}
 
 	values := url.Values{}
 
-	for key, value := range q {
+	for key, value := range query {
 		switch v := value.(type) {
 		case []string:
 			for _, item := range v {
@@ -453,11 +470,11 @@ func encodeQuery(q Query) string {
 	return values.Encode()
 }
 
-func firstQuery(q []Query) Query {
-	if len(q) == 0 {
+func firstQuery(query []Query) Query {
+	if len(query) == 0 {
 		return nil
 	}
-	return q[0]
+	return query[0]
 }
 
 func normalizePath(path string) string {
