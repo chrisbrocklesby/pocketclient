@@ -3,6 +3,7 @@ package pocketclient
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -174,7 +175,35 @@ func (c *Client) DELETE(path string, output any, query ...Query) error {
 	return c.do(context.Background(), http.MethodDelete, path, nil, output, nil, firstQuery(query), true)
 }
 
+func (c *Client) isTokenExpired() bool {
+	token := c.getToken()
+	if token == "" {
+		return false
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return false
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return false
+	}
+	return claims.Exp > 0 && time.Now().Unix() >= claims.Exp
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body any, output any, headers Headers, query Query, retry bool) error {
+	if retry && c.autoReauth && c.isTokenExpired() {
+		if err := c.reauth(ctx); err != nil {
+			return err
+		}
+	}
+
 	reader, contentType, err := buildBody(body)
 	if err != nil {
 		return err
