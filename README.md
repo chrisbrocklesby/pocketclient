@@ -1,5 +1,5 @@
 ![pocketclient](pocketclient.png)
-# PocketClient (Go SDK) - v1.0.6
+# PocketClient (Go SDK) - v1.0.7
 A minimal, typed Go SDK for [PocketBase](https://pocketbase.io).
 
 ## Install
