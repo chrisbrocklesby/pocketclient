@@ -24,6 +24,8 @@ type Client struct {
 	mu    sync.RWMutex
 	Token string
 
+	reauthMu sync.Mutex
+
 	authCollection string
 	authIdentity   string
 	authPassword   string
@@ -199,7 +201,7 @@ func (c *Client) isTokenExpired() bool {
 
 func (c *Client) do(ctx context.Context, method, path string, body any, output any, headers Headers, query Query, retry bool) error {
 	if retry && c.autoReauth && c.isTokenExpired() {
-		if err := c.reauth(ctx); err != nil {
+		if err := c.tryReauth(ctx, c.getToken()); err != nil {
 			return err
 		}
 	}
@@ -244,8 +246,8 @@ func (c *Client) do(ctx context.Context, method, path string, body any, output a
 		return err
 	}
 
-	if res.StatusCode == http.StatusUnauthorized && retry && c.autoReauth {
-		if err := c.reauth(ctx); err != nil {
+	if (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden) && retry && c.autoReauth {
+		if err := c.tryReauth(ctx, c.getToken()); err != nil {
 			return err
 		}
 
@@ -266,6 +268,21 @@ func (c *Client) do(ctx context.Context, method, path string, body any, output a
 	}
 
 	return nil
+}
+
+// tryReauth serialises concurrent reauth attempts. If another goroutine already
+// refreshed the token while this one was waiting, the fresh token is used and
+// no additional auth request is made.
+func (c *Client) tryReauth(ctx context.Context, tokenAtDecision string) error {
+	c.reauthMu.Lock()
+	defer c.reauthMu.Unlock()
+
+	// Another goroutine already reauthenticated — reuse its token.
+	if c.getToken() != tokenAtDecision {
+		return nil
+	}
+
+	return c.reauth(ctx)
 }
 
 func (c *Client) reauth(ctx context.Context) error {
